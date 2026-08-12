@@ -100,11 +100,21 @@
                     <label class="block text-sm font-semibold text-slate-700 mb-1">
                         แนบรูปภาพประกอบ (ถ้ามี)
                     </label>
-                    <input type="file" name="image" accept="image/*" 
+                    <input type="file" name="image" id="image-input" accept="image/*" 
                         class="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-950 hover:file:bg-blue-100 transition cursor-pointer">
                     <p class="text-xs text-slate-400 mt-1.5 flex items-center gap-1">
                         <span>🛡️</span> ระบบจะทำการลบข้อมูลพิกัดตำแหน่ง (EXIF GPS) ออกจากรูปภาพให้อัตโนมัติเพื่อความปลอดภัยของคุณ
                     </p>
+
+                    <!-- Image Preview -->
+                    <div id="image-preview-wrap" class="hidden mt-3 relative inline-block">
+                        <img id="image-preview" src="" alt="ตัวอย่างรูปภาพที่เลือก" class="max-h-52 rounded-lg border border-slate-300 shadow-sm">
+                        <button type="button" onclick="clearImagePreview()" 
+                            class="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-md">
+                            ✕
+                        </button>
+                        <p id="image-preview-name" class="text-xs text-slate-500 mt-1 truncate"></p>
+                    </div>
                 </div>
 
                 <!-- Submit Button -->
@@ -123,6 +133,42 @@
             <p>#Dev By Mak Thitisak</p>
         </footer>
     </div>
+    <script>
+        const imageInput = document.getElementById('image-input');
+        const previewWrap = document.getElementById('image-preview-wrap');
+        const previewImg = document.getElementById('image-preview');
+        const previewName = document.getElementById('image-preview-name');
+
+        imageInput.addEventListener('change', function () {
+            const file = this.files && this.files[0];
+
+            if (!file) {
+                clearImagePreview();
+                return;
+            }
+
+            if (!file.type.startsWith('image/')) {
+                alert('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
+                clearImagePreview();
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                previewImg.src = e.target.result;
+                previewName.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+                previewWrap.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function clearImagePreview() {
+            imageInput.value = '';
+            previewImg.src = '';
+            previewName.textContent = '';
+            previewWrap.classList.add('hidden');
+        }
+    </script>
 
 </body>
 </html>

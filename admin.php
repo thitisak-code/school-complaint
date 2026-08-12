@@ -10,6 +10,7 @@ if (!isset($_SESSION['admin_logged_in'])) {
 
 $msg = '';
 $error = '';
+$active_tab = 'dashboard'; // แท็บที่จะแสดงเมื่อโหลดหน้า (ค่าเริ่มต้น = ภาพรวมระบบ)
 
 // 2. ประมวลผลการอัปเดตสถานะการร้องเรียน
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_complaint'])) {
@@ -21,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_complai
     if ($stmt->execute(['status' => $status, 'reply' => $admin_reply, 'id' => $id])) {
         $msg = 'อัปเดตสถานะเรื่องร้องเรียนเรียบร้อยแล้ว';
     }
+    $active_tab = 'complaints'; // บันทึกเสร็จแล้วให้อยู่ที่แท็บเรื่องร้องเรียนทั้งหมดเหมือนเดิม
 }
 
 // 3. ประมวลผลการลบเรื่องร้องเรียน
@@ -37,11 +39,13 @@ if (isset($_GET['delete_complaint'])) {
     $stmt = $pdo->prepare("DELETE FROM complaints WHERE id = :id");
     $stmt->execute(['id' => $del_id]);
     $msg = 'ลบเรื่องร้องเรียนเรียบร้อยแล้ว';
+    $active_tab = 'complaints'; // ลบเสร็จแล้วให้อยู่ที่แท็บเรื่องร้องเรียนทั้งหมดเหมือนเดิม
 }
 
 // 4. ประมวลผลการจัดการบัญชีผู้ดูแล (Admin Management)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_manage_admin'])) {
     $sub_action = $_POST['sub_action'];
+    $active_tab = 'admins'; // จัดการผู้ดูแลเสร็จแล้วให้อยู่ที่แท็บนี้เหมือนเดิม
 
     if ($sub_action === 'add') {
         $username = trim($_POST['username']);
@@ -78,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_manage_admin']
 // 5. ลบบัญชีผู้ดูแล
 if (isset($_GET['delete_admin'])) {
     $del_admin_id = intval($_GET['delete_admin']);
+    $active_tab = 'admins'; // ลบผู้ดูแลเสร็จแล้วให้อยู่ที่แท็บนี้เหมือนเดิม
     $count_admin = $pdo->query("SELECT COUNT(*) FROM admin_users")->fetchColumn();
     if ($count_admin > 1) {
         $stmt = $pdo->prepare("DELETE FROM admin_users WHERE id = :id");
@@ -111,6 +116,15 @@ $complaints = $stmt_all->fetchAll();
 
 // 10. ดึงรายชื่อ Admin ทั้งหมด
 $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER BY id DESC")->fetchAll();
+
+// 11. ดึงรายการหมวดหมู่ที่ไม่ซ้ำกัน สำหรับใช้เป็นตัวกรอง
+$category_list = [];
+foreach ($complaints as $c) {
+    if (!empty($c['category']) && !in_array($c['category'], $category_list)) {
+        $category_list[] = $c['category'];
+    }
+}
+sort($category_list);
 ?>
 
 <!DOCTYPE html>
@@ -122,7 +136,17 @@ $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER 
     <link rel="icon" href="assets/Logo.png" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style> body { font-family: 'Sarabun', sans-serif; } </style>
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        .complaint-card:active { transform: scale(0.98); }
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex flex-col md:flex-row">
 
@@ -149,25 +173,25 @@ $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER 
 
             <!-- Navigation Links -->
             <nav class="p-3 space-y-1.5 text-xs font-semibold">
-                <button onclick="switchTab('dashboard')" id="btn-dashboard" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-amber-500 text-blue-950 font-bold transition">
+                <button onclick="switchTab('dashboard')" id="btn-dashboard" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition <?php echo $active_tab === 'dashboard' ? 'bg-amber-500 text-blue-950 font-bold' : 'hover:bg-blue-900 text-slate-200'; ?>">
                     <span class="flex items-center gap-2">📊 ภาพรวมระบบ</span>
                 </button>
 
-                <button onclick="switchTab('complaints')" id="btn-complaints" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-blue-900 text-slate-200 transition">
+                <button onclick="switchTab('complaints')" id="btn-complaints" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition <?php echo $active_tab === 'complaints' ? 'bg-amber-500 text-blue-950 font-bold' : 'hover:bg-blue-900 text-slate-200'; ?>">
                     <span class="flex items-center gap-2">📥 เรื่องร้องเรียนทั้งหมด</span>
                     <?php if ($stat_pending > 0): ?>
                         <span class="bg-red-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full animate-pulse"><?php echo $stat_pending; ?></span>
                     <?php endif; ?>
                 </button>
 
-                <button onclick="switchTab('overdue')" id="btn-overdue" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-blue-900 text-slate-200 transition">
+                <button onclick="switchTab('overdue')" id="btn-overdue" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition <?php echo $active_tab === 'overdue' ? 'bg-amber-500 text-blue-950 font-bold' : 'hover:bg-blue-900 text-slate-200'; ?>">
                     <span class="flex items-center gap-2">⚠️ ค้างเกินกำหนด (SLA)</span>
                     <?php if (count($overdue_list) > 0): ?>
                         <span class="bg-amber-500 text-blue-950 text-[10px] font-extrabold px-2 py-0.5 rounded-full"><?php echo count($overdue_list); ?></span>
                     <?php endif; ?>
                 </button>
 
-                <button onclick="switchTab('admins')" id="btn-admins" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-blue-900 text-slate-200 transition">
+                <button onclick="switchTab('admins')" id="btn-admins" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition <?php echo $active_tab === 'admins' ? 'bg-amber-500 text-blue-950 font-bold' : 'hover:bg-blue-900 text-slate-200'; ?>">
                     <span class="flex items-center gap-2">👤 จัดการผู้ดูแลระบบ</span>
                 </button>
             </nav>
@@ -213,7 +237,7 @@ $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER 
             <!-- ---------------------------------------------------- -->
             <!-- 📊 TAB 1: DASHBOARD -->
             <!-- ---------------------------------------------------- -->
-            <section id="tab-dashboard" class="tab-content space-y-6">
+            <section id="tab-dashboard" class="tab-content <?php echo $active_tab === 'dashboard' ? '' : 'hidden'; ?> space-y-6">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">📊 ภาพรวมระบบ (Dashboard)</h2>
                     <p class="text-xs text-slate-500">สรุปสถิติเรื่องร้องเรียนและการดำเนินงานทั้งหมด</p>
@@ -288,86 +312,153 @@ $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER 
             <!-- ---------------------------------------------------- -->
             <!-- 📥 TAB 2: COMPLAINTS LIST -->
             <!-- ---------------------------------------------------- -->
-            <section id="tab-complaints" class="tab-content hidden space-y-6">
+            <section id="tab-complaints" class="tab-content <?php echo $active_tab === 'complaints' ? '' : 'hidden'; ?> space-y-6">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">📥 รายการเรื่องร้องเรียนทั้งหมด</h2>
-                    <p class="text-xs text-slate-500">ตรวจสอบ ปรับเปลี่ยนสถานะ และพิมพ์ตอบกลับนักเรียน</p>
+                    <p class="text-xs text-slate-500">ตรวจสอบ ปรับเปลี่ยนสถานะ และพิมพ์ตอบกลับนักเรียน (คลิกที่การ์ดเพื่อดูรายละเอียด)</p>
                 </div>
 
-                <div class="space-y-4">
-                    <?php if (count($complaints) === 0): ?>
-                        <div class="bg-white p-8 rounded-xl text-center text-slate-400 text-sm">ยังไม่มีเรื่องร้องเรียนในระบบ</div>
-                    <?php endif; ?>
+                <!-- 🔍 FILTER BAR -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-bold text-slate-600 mr-1">สถานะ:</span>
+                        <button type="button" class="filter-status-btn active px-3 py-1.5 rounded-full text-xs font-bold bg-blue-950 text-white transition" data-status="all">ทั้งหมด</button>
+                        <button type="button" class="filter-status-btn px-3 py-1.5 rounded-full text-xs font-bold bg-red-100 text-red-700 hover:bg-red-200 transition" data-status="pending">⏳ รอดำเนินการ</button>
+                        <button type="button" class="filter-status-btn px-3 py-1.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 hover:bg-blue-200 transition" data-status="in_progress">🔄 กำลังตรวจสอบ</button>
+                        <button type="button" class="filter-status-btn px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-700 hover:bg-green-200 transition" data-status="resolved">✅ แก้ไขแล้ว</button>
+                        <button type="button" class="filter-status-btn px-3 py-1.5 rounded-full text-xs font-bold bg-slate-200 text-slate-700 hover:bg-slate-300 transition" data-status="rejected">❌ ยุติเรื่อง</button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                        <span class="text-xs font-bold text-slate-600 mr-1">หมวดหมู่:</span>
+                        <select id="filter-category" class="text-xs p-2 border rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-amber-500">
+                            <option value="all">ทุกหมวดหมู่</option>
+                            <?php foreach ($category_list as $cat): ?>
+                                <option value="<?php echo htmlspecialchars($cat); ?>"><?php echo htmlspecialchars($cat); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <span id="filter-count" class="text-xs text-slate-400 ml-auto"></span>
+                    </div>
+                </div>
 
-                    <?php foreach ($complaints as $item): 
-                        $is_overdue = ($item['status'] === 'pending' && strtotime($item['created_at']) <= strtotime('-3 days'));
-                        $is_new     = ($item['status'] === 'pending');
-                    ?>
-                        <div class="bg-white rounded-xl shadow-sm border p-5 <?php echo $is_new ? 'border-amber-400 ring-1 ring-amber-400/50' : 'border-slate-200'; ?>">
-                            <div class="flex flex-wrap justify-between items-start gap-2 border-b pb-3 mb-3">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-mono text-base font-bold text-indigo-600"><?php echo $item['ticket_code']; ?></span>
-                                    <span class="text-xs font-semibold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full"><?php echo htmlspecialchars($item['category']); ?></span>
-                                    <?php if ($is_new): ?>
-                                        <span class="bg-amber-500 text-blue-950 text-[10px] font-extrabold px-2 py-0.5 rounded-full">🔔 เรื่องใหม่</span>
-                                    <?php endif; ?>
-                                    <?php if ($is_overdue): ?>
-                                        <span class="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">⚠️ ค้างเกิน 3 วัน</span>
-                                    <?php endif; ?>
+                <?php if (count($complaints) === 0): ?>
+                    <div class="bg-white p-8 rounded-xl text-center text-slate-400 text-sm">ยังไม่มีเรื่องร้องเรียนในระบบ</div>
+                <?php else: ?>
+                    <div id="complaints-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <?php foreach ($complaints as $idx => $item):
+                            $is_overdue = ($item['status'] === 'pending' && strtotime($item['created_at']) <= strtotime('-3 days'));
+                            $is_new     = ($item['status'] === 'pending');
+                            $card_bg    = $is_new ? 'bg-red-50 border-red-300 ring-1 ring-red-300/60' : 'bg-white border-slate-200';
+                            $status_labels = [
+                                'pending'     => ['⏳ รอดำเนินการ', 'bg-red-600 text-white'],
+                                'in_progress' => ['🔄 กำลังตรวจสอบ', 'bg-blue-500 text-white'],
+                                'resolved'    => ['✅ แก้ไขแล้ว', 'bg-green-600 text-white'],
+                                'rejected'    => ['❌ ยุติเรื่อง', 'bg-slate-500 text-white'],
+                            ];
+                            [$status_text, $status_class] = $status_labels[$item['status']] ?? ['ไม่ทราบสถานะ', 'bg-slate-400 text-white'];
+                        ?>
+                            <div class="complaint-card cursor-pointer rounded-xl shadow-sm border p-4 transition-all duration-200 hover:shadow-lg hover:-translate-y-1 <?php echo $card_bg; ?>"
+                                 data-status="<?php echo htmlspecialchars($item['status']); ?>"
+                                 data-category="<?php echo htmlspecialchars($item['category']); ?>"
+                                 data-aos="fade-up"
+                                 data-aos-delay="<?php echo min($idx * 40, 300); ?>"
+                                 onclick='openComplaintModal(<?php echo json_encode([
+                                    'id'          => $item['id'],
+                                    'ticket_code' => $item['ticket_code'],
+                                    'category'    => $item['category'],
+                                    'details'     => $item['details'],
+                                    'status'      => $item['status'],
+                                    'admin_reply' => $item['admin_reply'] ?? '',
+                                    'created_at'  => date('d/m/Y H:i', strtotime($item['created_at'])),
+                                    'image_path'  => $item['image_path'] ?? '',
+                                    'is_overdue'  => $is_overdue,
+                                 ], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT); ?>)'>
+                                <div class="flex justify-between items-start gap-2 mb-2">
+                                    <span class="font-mono text-sm font-bold text-indigo-600 truncate"><?php echo htmlspecialchars($item['ticket_code']); ?></span>
+                                    <span class="shrink-0 text-[10px] font-extrabold px-2 py-0.5 rounded-full <?php echo $status_class; ?>"><?php echo $status_text; ?></span>
                                 </div>
-                                <div class="flex items-center gap-3">
-                                    <span class="text-xs text-slate-400">วันที่แจ้ง: <?php echo date('d/m/Y H:i', strtotime($item['created_at'])); ?> น.</span>
-                                    <a href="admin.php?delete_complaint=<?php echo $item['id']; ?>" onclick="return confirm('ยืนยันที่จะลบเรื่องร้องเรียนนี้หรือไม่?')" class="text-xs text-red-600 font-semibold hover:underline">🗑️ ลบ</a>
+                                <span class="inline-block text-[10px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full mb-2"><?php echo htmlspecialchars($item['category']); ?></span>
+                                <p class="text-slate-700 text-xs leading-relaxed line-clamp-3 mb-3"><?php echo mb_strimwidth(htmlspecialchars($item['details']), 0, 90, "..."); ?></p>
+                                <div class="flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100 pt-2">
+                                    <span><?php echo date('d/m/Y H:i', strtotime($item['created_at'])); ?> น.</span>
+                                    <?php if ($is_overdue): ?>
+                                        <span class="text-red-600 font-bold animate-pulse">⚠️ ค้างเกิน 3 วัน</span>
+                                    <?php else: ?>
+                                        <span class="text-indigo-500 font-semibold">ดูรายละเอียด →</span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
-
-                            <p class="text-slate-800 text-sm mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100"><?php echo nl2br(htmlspecialchars($item['details'])); ?></p>
-
-                            <?php if ($item['image_path']): ?>
-                                <div class="mb-4">
-                                    <a href="<?php echo htmlspecialchars($item['image_path']); ?>" target="_blank" class="inline-flex items-center gap-1 text-xs text-blue-600 font-semibold underline hover:text-blue-800">
-                                        🖼️ ดูรูปภาพประกอบที่แนบมา
-                                    </a>
-                                </div>
-                            <?php endif; ?>
-
-                            <!-- Update Status Form -->
-                            <form action="admin.php" method="POST" class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
-                                <input type="hidden" name="id" value="<?php echo $item['id']; ?>">
-                                <input type="hidden" name="action_update_complaint" value="1">
-                                
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="block text-xs font-semibold text-slate-700 mb-1">สถานะการดำเนินการ</label>
-                                        <select name="status" class="w-full text-xs p-2.5 border rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-amber-500">
-                                            <option value="pending" <?php if($item['status']=='pending') echo 'selected'; ?>>⏳ รอดำเนินการ</option>
-                                            <option value="in_progress" <?php if($item['status']=='in_progress') echo 'selected'; ?>>🔄 กำลังตรวจสอบ</option>
-                                            <option value="resolved" <?php if($item['status']=='resolved') echo 'selected'; ?>>✅ ดำเนินการแก้ไขแล้ว</option>
-                                            <option value="rejected" <?php if($item['status']=='rejected') echo 'selected'; ?>>❌ ยุติเรื่อง/ยกเลิก</option>
-                                        </select>
-                                    </div>
-                                    <div class="md:col-span-2">
-                                        <label class="block text-xs font-semibold text-slate-700 mb-1">ข้อความตอบกลับนักเรียน/ผู้แจ้งเรื่อง</label>
-                                        <input type="text" name="admin_reply" value="<?php echo htmlspecialchars($item['admin_reply'] ?? ''); ?>" placeholder="พิมพ์ผลการตรวจสอบหรือการดำเนินงาน..." class="w-full text-xs p-2.5 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                                    </div>
-                                </div>
-                                
-                                <div class="text-right">
-                                    <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-blue-950 font-bold text-xs px-4 py-2 rounded-lg transition shadow-sm">
-                                        💾 บันทึกการเปลี่ยนแปลง
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <p id="filter-empty" class="hidden bg-white p-8 rounded-xl text-center text-slate-400 text-sm">ไม่พบเรื่องร้องเรียนตามเงื่อนไขที่กรอง</p>
+                <?php endif; ?>
             </section>
+
+            <!-- 🗂️ COMPLAINT DETAIL MODAL -->
+            <div id="complaint-modal" class="fixed inset-0 bg-slate-900/60 z-[60] hidden items-center justify-center p-4" onclick="if(event.target===this) closeComplaintModal()">
+                <div class="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+                    <div class="flex justify-between items-center p-4 border-b bg-blue-950 text-white rounded-t-xl sticky top-0">
+                        <div class="flex items-center gap-2">
+                            <span id="modal-ticket" class="font-mono font-bold text-amber-400"></span>
+                            <span id="modal-overdue" class="hidden bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">⚠️ ค้างเกิน 3 วัน</span>
+                        </div>
+                        <button type="button" onclick="closeComplaintModal()" class="text-slate-300 hover:text-white text-xl leading-none font-bold">✕</button>
+                    </div>
+                    <div class="p-5 space-y-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span id="modal-category" class="font-semibold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full"></span>
+                            <span id="modal-date" class="text-slate-400"></span>
+                        </div>
+
+                        <p id="modal-details" class="text-slate-800 text-sm bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-line"></p>
+
+                        <div id="modal-image-wrap" class="hidden">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">🖼️ รูปภาพประกอบที่แนบมา</label>
+                            <img id="modal-image" src="" alt="รูปภาพประกอบเรื่องร้องเรียน"
+                                 class="w-full max-h-72 object-cover rounded-lg border border-slate-200 cursor-zoom-in hover:opacity-90 transition"
+                                 onclick="openImageLightbox(this.src)">
+                        </div>
+
+                        <!-- Update Status Form -->
+                        <form action="admin.php" method="POST" class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                            <input type="hidden" name="id" id="modal-form-id" value="">
+                            <input type="hidden" name="action_update_complaint" value="1">
+
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">สถานะการดำเนินการ</label>
+                                <select name="status" id="modal-form-status" class="w-full text-xs p-2.5 border rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-amber-500">
+                                    <option value="pending">⏳ รอดำเนินการ</option>
+                                    <option value="in_progress">🔄 กำลังตรวจสอบ</option>
+                                    <option value="resolved">✅ ดำเนินการแก้ไขแล้ว</option>
+                                    <option value="rejected">❌ ยุติเรื่อง/ยกเลิก</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">ข้อความตอบกลับนักเรียน/ผู้แจ้งเรื่อง</label>
+                                <input type="text" name="admin_reply" id="modal-form-reply" placeholder="พิมพ์ผลการตรวจสอบหรือการดำเนินงาน..." class="w-full text-xs p-2.5 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-amber-500">
+                            </div>
+
+                            <div class="flex justify-between items-center pt-1">
+                                <a id="modal-delete" href="#" onclick="return confirm('ยืนยันที่จะลบเรื่องร้องเรียนนี้หรือไม่?')" class="text-xs text-red-600 font-semibold hover:underline">🗑️ ลบเรื่องนี้</a>
+                                <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-blue-950 font-bold text-xs px-4 py-2 rounded-lg transition shadow-sm">
+                                    💾 บันทึกการเปลี่ยนแปลง
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🔍 IMAGE LIGHTBOX (ดูรูปเต็มขนาด) -->
+            <div id="image-lightbox" class="fixed inset-0 bg-black/85 z-[70] hidden items-center justify-center p-4" onclick="closeImageLightbox()">
+                <button type="button" onclick="closeImageLightbox()" class="absolute top-4 right-5 text-white text-3xl leading-none font-bold hover:text-amber-400">✕</button>
+                <img id="lightbox-image" src="" alt="รูปภาพขนาดเต็ม" class="max-w-full max-h-full rounded-lg shadow-2xl">
+            </div>
 
 
             <!-- ---------------------------------------------------- -->
             <!-- ⚠️ TAB 3: OVERDUE SLA ALERTS -->
             <!-- ---------------------------------------------------- -->
-            <section id="tab-overdue" class="tab-content hidden space-y-6">
+            <section id="tab-overdue" class="tab-content <?php echo $active_tab === 'overdue' ? '' : 'hidden'; ?> space-y-6">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">⚠️ เรื่องค้างดำเนินการเกินกำหนด (เกิน 3 วัน)</h2>
                     <p class="text-xs text-slate-500">รายการเรื่องร้องเรียนสถานะ "รอดำเนินการ" ที่ยังไม่ได้เริ่มตรวจสอบเกินระยะเวลาที่กำหนด</p>
@@ -401,7 +492,7 @@ $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER 
             <!-- ---------------------------------------------------- -->
             <!-- 👤 TAB 4: ADMIN USERS MANAGEMENT -->
             <!-- ---------------------------------------------------- -->
-            <section id="tab-admins" class="tab-content hidden space-y-6">
+            <section id="tab-admins" class="tab-content <?php echo $active_tab === 'admins' ? '' : 'hidden'; ?> space-y-6">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">👤 จัดการบัญชีผู้ดูแลระบบ (Admin Users)</h2>
                     <p class="text-xs text-slate-500">เพิ่ม แก้ไข หรือลบบัญชีผู้ใช้งานระบบหลังบ้านสำหรับเจ้าหน้าที่</p>
@@ -472,6 +563,9 @@ $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER 
         </main>
     </div>
 
+    <!-- 🎞️ AOS ANIMATION LIBRARY -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+
     <!-- 🔮 JAVASCRIPT FOR TAB SWITCHING & SIDEBAR TOGGLE -->
     <script>
         // ฟังก์ชันสลับการเปิด-ปิด Sidebar บนมือถือ
@@ -509,6 +603,126 @@ $admin_list = $pdo->query("SELECT id, username, fullname FROM admin_users ORDER 
             if (window.innerWidth < 768) {
                 toggleSidebar();
             }
+
+            // รีเฟรช AOS ทุกครั้งที่สลับแท็บ เพื่อให้การ์ดที่เพิ่งแสดงเล่นแอนิเมชันใหม่
+            if (window.AOS) {
+                setTimeout(() => AOS.refreshHard(), 50);
+            }
+        }
+
+        // ---------------------------------------------------- //
+        // 📥 COMPLAINTS: FILTER BAR
+        // ---------------------------------------------------- //
+        let currentStatusFilter = 'all';
+
+        function applyComplaintFilters() {
+            const categoryFilter = document.getElementById('filter-category');
+            const categoryValue = categoryFilter ? categoryFilter.value : 'all';
+            const cards = document.querySelectorAll('#complaints-grid .complaint-card');
+            let visibleCount = 0;
+
+            cards.forEach(card => {
+                const matchesStatus = (currentStatusFilter === 'all' || card.dataset.status === currentStatusFilter);
+                const matchesCategory = (categoryValue === 'all' || card.dataset.category === categoryValue);
+                const show = matchesStatus && matchesCategory;
+                card.classList.toggle('hidden', !show);
+                if (show) visibleCount++;
+            });
+
+            const emptyMsg = document.getElementById('filter-empty');
+            if (emptyMsg) emptyMsg.classList.toggle('hidden', visibleCount !== 0);
+
+            const countLabel = document.getElementById('filter-count');
+            if (countLabel) countLabel.textContent = `แสดง ${visibleCount} จาก ${cards.length} รายการ`;
+
+            if (window.AOS) setTimeout(() => AOS.refreshHard(), 50);
+        }
+
+        document.querySelectorAll('.filter-status-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentStatusFilter = btn.dataset.status;
+                document.querySelectorAll('.filter-status-btn').forEach(b => b.classList.remove('active', 'ring-2', 'ring-offset-1', 'ring-amber-500'));
+                btn.classList.add('active', 'ring-2', 'ring-offset-1', 'ring-amber-500');
+                applyComplaintFilters();
+            });
+        });
+
+        const categorySelectEl = document.getElementById('filter-category');
+        if (categorySelectEl) {
+            categorySelectEl.addEventListener('change', applyComplaintFilters);
+        }
+
+        // ---------------------------------------------------- //
+        // 🗂️ COMPLAINTS: DETAIL MODAL
+        // ---------------------------------------------------- //
+        function openComplaintModal(item) {
+            document.getElementById('modal-ticket').textContent = item.ticket_code;
+            document.getElementById('modal-category').textContent = item.category;
+            document.getElementById('modal-date').textContent = 'วันที่แจ้ง: ' + item.created_at + ' น.';
+            document.getElementById('modal-details').textContent = item.details;
+            document.getElementById('modal-overdue').classList.toggle('hidden', !item.is_overdue);
+
+            const imageWrap = document.getElementById('modal-image-wrap');
+            const imageThumb = document.getElementById('modal-image');
+            if (item.image_path) {
+                imageThumb.src = item.image_path;
+                imageWrap.classList.remove('hidden');
+            } else {
+                imageThumb.src = '';
+                imageWrap.classList.add('hidden');
+            }
+
+            document.getElementById('modal-form-id').value = item.id;
+            document.getElementById('modal-form-status').value = item.status;
+            document.getElementById('modal-form-reply').value = item.admin_reply || '';
+            document.getElementById('modal-delete').href = 'admin.php?delete_complaint=' + item.id;
+
+            const modal = document.getElementById('complaint-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.classList.add('overflow-hidden');
+        }
+
+        function closeComplaintModal() {
+            const modal = document.getElementById('complaint-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.classList.remove('overflow-hidden');
+        }
+
+        // ---------------------------------------------------- //
+        // 🔍 IMAGE LIGHTBOX: ดูรูปภาพขนาดเต็ม
+        // ---------------------------------------------------- //
+        function openImageLightbox(src) {
+            const lightbox = document.getElementById('image-lightbox');
+            document.getElementById('lightbox-image').src = src;
+            lightbox.classList.remove('hidden');
+            lightbox.classList.add('flex');
+        }
+
+        function closeImageLightbox() {
+            const lightbox = document.getElementById('image-lightbox');
+            lightbox.classList.add('hidden');
+            lightbox.classList.remove('flex');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeImageLightbox();
+                closeComplaintModal();
+            }
+        });
+
+        // ---------------------------------------------------- //
+        // 🎞️ INIT AOS
+        // ---------------------------------------------------- //
+        if (window.AOS) {
+            AOS.init({
+                duration: 500,
+                easing: 'ease-out-cubic',
+                once: false,
+                offset: 40,
+            });
         }
     </script>
 </body>
