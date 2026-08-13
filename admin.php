@@ -132,11 +132,10 @@ sort($category_list);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบหลังบ้าน - วิทยาลัยอาชีวศึกษามหาสารคาม</title>
+    <title>ระบบรับเรื่องร้องเรียน - วิทยาลัยอาชีวศึกษามหาสารคาม</title>
     <link rel="icon" href="assets/Logo.png" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     <style>
         body { font-family: 'Sarabun', sans-serif; }
         .complaint-card:active { transform: scale(0.98); }
@@ -146,15 +145,25 @@ sort($category_list);
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+
+        /* การ์ดค่อยๆ ขยับขึ้นตอนแสดงผล โดยไม่ต้องรอเลื่อนหน้าจอไปหา (ต่างจาก AOS ที่ผูกกับ scroll) */
+        @keyframes cardFadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .complaint-card {
+            opacity: 0;
+            animation: cardFadeUp 0.45s ease-out forwards;
+        }
     </style>
 </head>
-<body class="bg-slate-100 min-h-screen flex flex-col md:flex-row">
+<body class="bg-slate-100 min-h-screen md:h-screen flex flex-col md:flex-row md:overflow-hidden">
 
     <!-- Overlay สำหรับมือถือยามเปิด Slide Menu -->
     <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/50 z-40 hidden md:hidden"></div>
 
     <!-- 🚪 SIDEBAR SLIDE MENU -->
-    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 w-64 bg-blue-950 text-white z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col justify-between shadow-xl">
+    <aside id="sidebar" class="fixed md:sticky inset-y-0 left-0 md:top-0 md:h-screen w-64 bg-blue-950 text-white z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col justify-between shadow-xl overflow-y-auto">
         <div>
             <!-- Header Sidebar -->
             <div class="p-4 border-b border-blue-900 flex items-center space-x-3 bg-blue-900/50">
@@ -359,8 +368,7 @@ sort($category_list);
                             <div class="complaint-card cursor-pointer rounded-xl shadow-sm border p-4 transition-all duration-200 hover:shadow-lg hover:-translate-y-1 <?php echo $card_bg; ?>"
                                  data-status="<?php echo htmlspecialchars($item['status']); ?>"
                                  data-category="<?php echo htmlspecialchars($item['category']); ?>"
-                                 data-aos="fade-up"
-                                 data-aos-delay="<?php echo min($idx * 40, 300); ?>"
+                                 style="animation-delay: <?php echo min($idx * 40, 300); ?>ms;"
                                  onclick='openComplaintModal(<?php echo json_encode([
                                     'id'          => $item['id'],
                                     'ticket_code' => $item['ticket_code'],
@@ -563,9 +571,6 @@ sort($category_list);
         </main>
     </div>
 
-    <!-- 🎞️ AOS ANIMATION LIBRARY -->
-    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-
     <!-- 🔮 JAVASCRIPT FOR TAB SWITCHING & SIDEBAR TOGGLE -->
     <script>
         // ฟังก์ชันสลับการเปิด-ปิด Sidebar บนมือถือ
@@ -603,11 +608,6 @@ sort($category_list);
             if (window.innerWidth < 768) {
                 toggleSidebar();
             }
-
-            // รีเฟรช AOS ทุกครั้งที่สลับแท็บ เพื่อให้การ์ดที่เพิ่งแสดงเล่นแอนิเมชันใหม่
-            if (window.AOS) {
-                setTimeout(() => AOS.refreshHard(), 50);
-            }
         }
 
         // ---------------------------------------------------- //
@@ -634,8 +634,6 @@ sort($category_list);
 
             const countLabel = document.getElementById('filter-count');
             if (countLabel) countLabel.textContent = `แสดง ${visibleCount} จาก ${cards.length} รายการ`;
-
-            if (window.AOS) setTimeout(() => AOS.refreshHard(), 50);
         }
 
         document.querySelectorAll('.filter-status-btn').forEach(btn => {
@@ -708,22 +706,10 @@ sort($category_list);
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                closeImageLightbox();
+                closeImageLightbox(); 
                 closeComplaintModal();
             }
         });
-
-        // ---------------------------------------------------- //
-        // 🎞️ INIT AOS
-        // ---------------------------------------------------- //
-        if (window.AOS) {
-            AOS.init({
-                duration: 500,
-                easing: 'ease-out-cubic',
-                once: false,
-                offset: 40,
-            });
-        }
     </script>
 </body>
 </html>
