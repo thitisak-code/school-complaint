@@ -11,6 +11,7 @@ if (!isset($_SESSION['admin_logged_in'])) {
 $msg = '';
 $error = '';
 $active_tab = 'dashboard'; // แท็บที่จะแสดงเมื่อโหลดหน้า (ค่าเริ่มต้น = ภาพรวมระบบ)
+$suggestion_category = 'ข้อเสนอแนะเพื่อพัฒนาวิทยาลัย';
 
 // 2. ประมวลผลการอัปเดตสถานะการร้องเรียน
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_complaint'])) {
@@ -93,25 +94,39 @@ if (isset($_GET['delete_admin'])) {
     }
 }
 
-// 6. ดึงข้อมูลสถิติสำหรับ Dashboard & แจ้งเตือนเรื่องใหม่
-$stat_all         = $pdo->query("SELECT COUNT(*) FROM complaints")->fetchColumn();
-$stat_pending     = $pdo->query("SELECT COUNT(*) FROM complaints WHERE status = 'pending'")->fetchColumn(); // เรื่องร้องเรียนใหม่/ค้างดำเนินการ
-$stat_in_progress = $pdo->query("SELECT COUNT(*) FROM complaints WHERE status = 'in_progress'")->fetchColumn();
-$stat_resolved    = $pdo->query("SELECT COUNT(*) FROM complaints WHERE status = 'resolved'")->fetchColumn();
-$stat_rejected    = $pdo->query("SELECT COUNT(*) FROM complaints WHERE status = 'rejected'")->fetchColumn();
+// 6. ดึงข้อมูลสถิติสำหรับ Dashboard โดยแยกข้อเสนอแนะไปเมนูเฉพาะ
+$complaint_filter = 'category <> :suggestion_category';
+$complaint_params = ['suggestion_category' => $suggestion_category];
+$stat_stmt = $pdo->prepare("SELECT status, COUNT(*) AS total FROM complaints WHERE {$complaint_filter} GROUP BY status");
+$stat_stmt->execute($complaint_params);
+$complaint_stats = array_fill_keys(['pending', 'in_progress', 'resolved', 'rejected'], 0);
+foreach ($stat_stmt->fetchAll() as $stat_row) {
+    $complaint_stats[$stat_row['status']] = (int) $stat_row['total'];
+}
+$stat_all         = array_sum($complaint_stats);
+$stat_pending     = $complaint_stats['pending'];
+$stat_in_progress = $complaint_stats['in_progress'];
+$stat_resolved    = $complaint_stats['resolved'];
+$stat_rejected    = $complaint_stats['rejected'];
+
+$suggestion_count = $pdo->prepare("SELECT COUNT(*) FROM complaints WHERE category = :category");
+$suggestion_count->execute(['category' => $suggestion_category]);
+$stat_suggestions = (int) $suggestion_count->fetchColumn();
 
 // 7. ดึงรายการเรื่องร้องเรียนใหม่ (status = pending)
-$stmt_new = $pdo->query("SELECT * FROM complaints WHERE status = 'pending' ORDER BY id DESC");
+$stmt_new = $pdo->prepare("SELECT * FROM complaints WHERE status = 'pending' AND {$complaint_filter} ORDER BY id DESC");
+$stmt_new->execute($complaint_params);
 $new_complaints = $stmt_new->fetchAll();
 
 // 8. ดึงรายการร้องเรียนค้างดำเนินการเกิน 3 วัน (Overdue Alert)
 $overdue_threshold = date('Y-m-d H:i:s', strtotime('-3 days'));
-$stmt_overdue = $pdo->prepare("SELECT * FROM complaints WHERE status = 'pending' AND created_at <= :thresh ORDER BY created_at ASC");
-$stmt_overdue->execute(['thresh' => $overdue_threshold]);
+$stmt_overdue = $pdo->prepare("SELECT * FROM complaints WHERE status = 'pending' AND created_at <= :thresh AND {$complaint_filter} ORDER BY created_at ASC");
+$stmt_overdue->execute(['thresh' => $overdue_threshold] + $complaint_params);
 $overdue_list = $stmt_overdue->fetchAll();
 
 // 9. ดึงเรื่องร้องเรียนทั้งหมด
-$stmt_all = $pdo->query("SELECT * FROM complaints ORDER BY id DESC");
+$stmt_all = $pdo->prepare("SELECT * FROM complaints WHERE {$complaint_filter} ORDER BY id DESC");
+$stmt_all->execute($complaint_params);
 $complaints = $stmt_all->fetchAll();
 
 // 10. ดึงรายชื่อ Admin ทั้งหมด
@@ -193,6 +208,13 @@ sort($category_list);
                     <?php endif; ?>
                 </button>
 
+                <a href="suggestions.php" class="w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition hover:bg-blue-900 text-slate-200">
+                    <span class="flex items-center gap-2">💡 ข้อเสนอแนะพัฒนาวิทยาลัย</span>
+                    <?php if ($stat_suggestions > 0): ?>
+                        <span class="bg-emerald-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full"><?php echo $stat_suggestions; ?></span>
+                    <?php endif; ?>
+                </a>
+
                 <button onclick="switchTab('overdue')" id="btn-overdue" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition <?php echo $active_tab === 'overdue' ? 'bg-amber-500 text-blue-950 font-bold' : 'hover:bg-blue-900 text-slate-200'; ?>">
                     <span class="flex items-center gap-2">⚠️ ค้างเกินกำหนด (SLA)</span>
                     <?php if (count($overdue_list) > 0): ?>
@@ -249,7 +271,7 @@ sort($category_list);
             <section id="tab-dashboard" class="tab-content <?php echo $active_tab === 'dashboard' ? '' : 'hidden'; ?> space-y-6">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">📊 ภาพรวมระบบ (Dashboard)</h2>
-                    <p class="text-xs text-slate-500">สรุปสถิติเรื่องร้องเรียนและการดำเนินงานทั้งหมด</p>
+                    <p class="text-xs text-slate-500">สรุปสถิติเรื่องร้องเรียน โดยแยกข้อเสนอแนะเพื่อพัฒนาวิทยาลัยไว้ในเมนูเฉพาะ</p>
                 </div>
 
                 <!-- 🔔 NEW COMPLAINTS ALERT BANNER -->
@@ -325,6 +347,10 @@ sort($category_list);
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">📥 รายการเรื่องร้องเรียนทั้งหมด</h2>
                     <p class="text-xs text-slate-500">ตรวจสอบ ปรับเปลี่ยนสถานะ และพิมพ์ตอบกลับนักเรียน (คลิกที่การ์ดเพื่อดูรายละเอียด)</p>
+                </div>
+
+                <div class="flex justify-end print:hidden">
+                    <a href="report.php?type=complaints" target="_blank" class="bg-blue-950 hover:bg-blue-900 text-white font-bold text-xs px-4 py-2.5 rounded-lg transition">🖨️ พิมพ์รายงานเรื่องร้องเรียน</a>
                 </div>
 
                 <!-- 🔍 FILTER BAR -->
